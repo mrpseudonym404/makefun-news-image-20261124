@@ -1,62 +1,73 @@
 #!/usr/bin/env python3
-"""The World in One Day — Tuesday 24 November 2026 (entry-news-image 20261124).
+"""Build the news-image entry for 24 November 2026.
 
-Deterministic PIL render. Adapted from build_image.py (20261123) — DO NOT
-overwrite the 20261123 files. Layout re-budgeted to fit the new sparkline
-strip + taller hero/cards while keeping a 25px gap above the footer line.
+Renders 'The World in One Day - Tuesday 24 November 2026' as a 1024x1024
+newspaper-style summary: one hero story (Nvidia / Jensen Huang), a 2x2 grid
+of four cards, a BY THE NUMBERS strip, and four ALSO TODAY items.
 
-Verified numbers (checked live 2026-11-24 ~19:30 WIB; see plan-20261124.md):
-- NVDA +31.48% Mon 23 Nov, close $165.05 (Fri $125.53), +$952B, nears $4T.
-  Shares "had lost a third of their value in the past two weeks" (Investopedia)
-  -> sparkline "-33% in 2 weeks" label is verified. Oct 6 close $239.24 (WSJ).
-- Nasdaq 24,089.56 (+6.51%), best day since April 2025. S&P +4.73%, Dow +3.01%.
-- Cikande: 26 body bags, 16 identified by sex, 10 unidentified, DNA under way;
-  28 missing (31 reports - 3 safe); police raised to investigation.
-- ICJ: 14 nations joint statement Mon 23 Nov, judgment binding, first genocide
-  verdict in ICJ's 80-year history. UK sanctioned 5 military figures.
-- CPNS 167,113 formations (Minister PANRB, DPR hearing Mon 23 Nov).
-- Gaza: Oxfam/CEOBS Mon 23 Nov — >99% contaminated, 61M tonnes debris,
-  ~18 litres water/person/day.
-- Grok: Virginia + Oregon sued SpaceX/X/xAI Nov 23; VA seeks up to $2,500 per
-  willful violation; CCDH ~3M sexualized images, ~23,000 appearing to depict
-  children (plan's ">20,000" consistent).
-- MSCI: no decision; consultation to 30 Apr 2027, decision by 30 Jun 2027.
-  Rupiah closed Tue 24 Nov -0.15% at Rp18,227 (confirmed).
-- CORRECTION vs plan: IHSG close Tue 24 Nov is 5,241.59 (+0.49%) — the plan's
-  5,207.57 (-0.16%) was a midday snapshot, NOT the close. Four sources agree.
-- Hero photo: Jensen Huang, Stanford CS 153, 30 Apr 2026, Anders Eidesvik,
-  CC BY-SA 4.0, Wikimedia Commons (file Jensen_huang_stanford_2026-04-30_008.jpg).
-  Cropped to a face band; credit in footer.
+Deterministic: PIL only, no network, no randomness. Output is written next
+to this script as entry-20261124.png, or to the path given as argv[1].
+The hero photograph (hero-20261124.png) must sit next to this script.
 """
-import textwrap, time
+
+import sys
+from pathlib import Path
+
 from PIL import Image, ImageDraw, ImageFont
 
+HERE = Path(__file__).resolve().parent
 W, H = 1024, 1024
-MX = 36                      # margin
-CW = 952                     # content width
-INK   = (22, 22, 22)
-PAPER = (249, 246, 236)
-GOLD  = (212, 175, 55)
-RED   = (178, 34, 34)
-GREY  = (90, 86, 76)
-LINE  = (201, 194, 178)
-CARD  = (255, 255, 255)
-GREEN = (30, 132, 73)
 
-FONT_DIR = "/home/hatch/workspace/tools/fonts"
-def f_anton(sz):  return ImageFont.truetype(f"{FONT_DIR}/Anton-Regular.ttf", sz)
-def f_bebas(sz):  return ImageFont.truetype(f"{FONT_DIR}/BebasNeue-Regular.ttf", sz)
-def f_sans(sz):   return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", sz)
-def f_sansb(sz):  return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", sz)
-def f_sansi(sz):  return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf", sz)
+# ---- palette ------------------------------------------------------------
+CREAM = (247, 241, 222)      # page background
+CARD = (255, 253, 245)       # card / strip background
+INK = (20, 20, 20)           # near-black
+BLACK = (17, 17, 17)         # masthead / dark boxes
+RED = (179, 39, 30)          # accent red
+GOLD = (217, 168, 33)        # date gold
+BLUE = (31, 78, 121)         # POLITICS tag
+PURPLE = (108, 52, 131)      # WORLD tag
+GREEN = (30, 132, 73)        # positive numbers
+GREY = (85, 85, 85)          # secondary text
+LIGHT_GREY = (200, 196, 182) # hairlines
+BODY_GREY = (51, 51, 51)
 
-def wrap(draw, text, font, max_w):
-    """Greedy wrap; returns list of lines, asserts each fits."""
+# ---- fonts --------------------------------------------------------------
+FONT_DIRS = [
+    Path.home() / ".fonts",
+    Path.home() / "workspace" / "tools" / "fonts",
+    Path("/usr/share/fonts/truetype/dejavu"),
+]
+
+
+def find_font(names):
+    for d in FONT_DIRS:
+        for n in names:
+            p = d / n
+            if p.exists():
+                return str(p)
+    return None
+
+
+ANTON = find_font(["Anton-Regular.ttf"]) or find_font(["DejaVuSans-Bold.ttf"])
+BEBAS = find_font(["BebasNeue-Regular.ttf"]) or ANTON
+SANS = find_font(["DejaVuSans.ttf"])
+SANS_BOLD = find_font(["DejaVuSans-Bold.ttf"]) or SANS
+
+
+def font(path, size):
+    return ImageFont.truetype(path, size)
+
+
+# ---- text helpers -------------------------------------------------------
+def wrap_text(draw, text, fnt, max_w):
+    """Greedy word wrap; returns a list of lines that fit max_w."""
+    words = text.split()
     lines, cur = [], ""
-    for word in text.split(" "):
-        t = (cur + " " + word).strip()
-        if draw.textlength(t, font=font) <= max_w:
-            cur = t
+    for word in words:
+        trial = f"{cur} {word}".strip()
+        if draw.textlength(trial, font=fnt) <= max_w:
+            cur = trial
         else:
             if cur:
                 lines.append(cur)
@@ -65,181 +76,225 @@ def wrap(draw, text, font, max_w):
         lines.append(cur)
     return lines
 
-def draw_center(draw, y, text, font, fill, x0=MX, x1=MX+CW):
-    w = draw.textlength(text, font=font)
-    draw.text(((x0 + x1 - w) / 2, y), text, font=font, fill=fill)
 
-# ---------------------------------------------------------------- content
-TITLE  = "THE WORLD IN ONE DAY"
-DATE   = "T U E S D A Y ,  2 4  N O V E M B E R  2 0 2 6"
-KICKER = "NINE STORIES THAT DEFINED THE DAY  \u2022  MARKETS  \u2022  WAR  \u2022  INDONESIA  \u2022  JUSTICE"
-HERO_HEAD = "HUANG IS BACK"
-HERO_BODY = ("Nvidia's board unanimously reinstates Jensen Huang as CEO \u2014 11 days after "
-             "he resigned, and 6 days after saying it would not. NVDA soars 31%, its best "
-             "day since 2003, adding $952B in value.")
-BOX_TITLE = ["WHAT HAPPENS", "NEXT"]
-BOX_BULLETS = [
-    "Board reversed itself \u2014 judgment under scrutiny",
-    "Rally must hold after leadership vacuum",
-    "NVDA nears $4T cap",
-]
-# sparkline: NVDA 2 weeks — verified endpoints: Oct 6 close $239.24, Fri $125.53, Mon $165.05
-SPARK = [(0.00, 239.24), (0.18, 205.0), (0.36, 178.0), (0.52, 152.0),
-         (0.66, 131.0), (0.78, 125.53), (0.90, 143.0), (1.00, 165.05)]
-CARDS = [
-    ("WAR", (176, 58, 46), "UKRAINE SINKS RUSSIAN WARSHIP OFF LIBYA",
-     "Seven sea drones sank Merkury off Benghazi \u2014 the ~40th warship lost since 2022."),
-    ("INDONESIA", RED, "26 BODY BAGS AFTER CANDY-FACTORY FIRE",
-     "Cikande blaze killed at least 26; 28 missing, DNA tests under way. Police probe negligence."),
-    ("POLITICS", (31, 97, 141), "PRABOWO NAMES TWO FOR VICE PRESIDENT",
-     "Amran Sulaiman, Sugiono to replace Gibran; MPR\u2019s 732 vote 11 Dec, serves to 2029."),
-    ("WORLD", (96, 63, 141), "14 NATIONS BACK GENOCIDE RULING ON MYANMAR",
-     "The ICJ\u2019s first genocide verdict in 80 years is binding. Britain sanctioned 5 generals."),
-]
-STRIP = [
-    ("+6.51%", INK,  "NASDAQ\u2019S BEST DAY", "SINCE APRIL 2025"),
-    ("167,113", INK, "CPNS 2026", "FORMATIONS"),
-    ("61M", RED,     "TONS OF RUBBLE", "IN GAZA"),
-    ("$2,500", INK,  "FINE PER GROK", "VIOLATION"),
-]
-ALSO = [
-    ("MARKETS", "MSCI firm on Indonesia review; rupiah Rp18,227 (\u22120.15%), IHSG +0.49% to 5,241.59."),
-    ("TECH", "Virginia & Oregon sue SpaceX over Grok\u2019s >20,000 images of children \u2192 first state suits."),
-    ("GAZA", "Oxfam: >99% of Gaza contaminated by war debris \u2192 water ~18 litres a day per person."),
-    ("VENEZUELA", "US designates Cartel de los Soles a terror group \u2192 freezes; Maduro denies it exists."),
-]
-ASOF = time.strftime("%H:%M")   # run with TZ=Asia/Jakarta
-FOOTER = (f"As of {ASOF} WIB \u2022 What to watch: Nvidia rally holds? \u2022 "
-          "Sources: Reuters \u2022 AP \u2022 Bloomberg \u2022 Photo: Eidesvik / Wikimedia CC BY-SA")
+def draw_lines(draw, x, y, lines, fnt, fill, leading):
+    for i, line in enumerate(lines):
+        draw.text((x, y + i * leading), line, font=fnt, fill=fill)
+    return y + len(lines) * leading
 
-# ---------------------------------------------------------------- canvas
-img = Image.new("RGB", (W, H), PAPER)
-d = ImageDraw.Draw(img)
 
-# ---- masthead (0..118) ----
-d.rectangle([0, 0, W, 112], fill=INK)
-draw_center(d, 6, TITLE, f_anton(60), PAPER)
-draw_center(d, 80, DATE, f_bebas(28), GOLD)
-d.rectangle([0, 112, W, 118], fill=RED)
+def fit_one_line(draw, text, fnt_path, size, max_w, min_size=13):
+    """Shrink the font until the text fits on one line; returns the font."""
+    s = size
+    while s > min_size:
+        f = font(fnt_path, s)
+        if draw.textlength(text, font=f) <= max_w:
+            return f
+        s -= 1
+    return font(fnt_path, min_size)
 
-# ---- kicker ----
-y = 126
-draw_center(d, y, KICKER, f_bebas(26), GREY)
-y += 34                      # 160 hero top
 
-# ---- hero: photo 660x188 + stat box ----
-HY, HH = y, 188
-photo = Image.open("hero-20261124.png").convert("RGB")   # 500x667 portrait
-# face band: hair ~y130, chin ~y330 -> band 175..330 keeps eyes/mouth/chin
-photo = photo.crop((0, 175, 500, 330)).resize((660, HH), Image.LANCZOS)
-img.paste(photo, (MX, HY))
-# scrim (darker/taller than 20261123)
-scrim = Image.new("RGBA", (660, 92), (0, 0, 0, 168))
-img.paste(scrim, (MX, HY + HH - 92), scrim)
-d.text((MX + 16, HY + HH - 80), HERO_HEAD, font=f_anton(58), fill=(255, 255, 255))
-# stat box
-BX0, BX1 = MX + 690, MX + CW
-d.rectangle([BX0, HY, BX1, HY + HH], fill=INK)
-d.rectangle([BX0, HY, BX1, HY + 4], fill=RED)
-bx, by = BX0 + 18, HY + 14
-for i, ln in enumerate(BOX_TITLE):
-    d.text((bx, by + i * 30), ln, font=f_anton(28), fill=GOLD)
-by += 64
-for b in BOX_BULLETS:
-    lines = wrap(d, b, f_sans(15), BX1 - BX0 - 36 - 26)
-    d.text((bx + 12, by), "\u2022", font=f_sans(15), fill=GOLD)
-    for j, ln in enumerate(lines):
-        d.text((bx + 26, by + j * 18), ln, font=f_sans(15), fill=PAPER)
-    by += len(lines) * 18 + 4
-print(f"[diag] hero box bullets end y={by} (box bottom {HY+HH})")
+# ---- sections -----------------------------------------------------------
+def draw_masthead(draw):
+    draw.rectangle([0, 0, W, 104], fill=BLACK)
+    title = font(ANTON, 56)
+    draw.text((W // 2, 12), "THE WORLD IN ONE DAY", font=title,
+              fill=(255, 255, 255), anchor="ma")
+    date = font(ANTON, 24)
+    draw.text((W // 2, 72), "TUESDAY, 24 NOVEMBER 2026", font=date,
+              fill=GOLD, anchor="ma")
+    draw.rectangle([0, 104, W, 108], fill=RED)
 
-# ---- hero body (2 lines, 19px) ----
-y = HY + HH + 8
-body_lines = wrap(d, HERO_BODY, f_sans(19), CW)
-assert len(body_lines) == 2, f"hero body wrapped to {len(body_lines)} lines: {body_lines}"
-for i, ln in enumerate(body_lines):
-    d.text((MX, y + i * 23), ln, font=f_sans(19), fill=INK)
-y += 2 * 23 + 4              # sparkline top
 
-# ---- sparkline strip (952x42, white card) ----
-SY, SH = y, 42
-d.rectangle([MX, SY, MX + CW, SY + SH], fill=CARD, outline=LINE, width=1)
-d.rectangle([MX, SY, MX + CW, SY + 3], fill=RED)
-# plot area: x 150..930, price 125..240 -> y SY+32..SY+6
-def sp_x(t): return 150 + t * (930 - 150)
-def sp_y(p): return SY + 32 - (p - 125) / (240 - 125) * 26
-pts = [(sp_x(t), sp_y(p)) for t, p in SPARK]
-d.line(pts, fill=INK, width=3)
-for px, py in pts:
-    d.ellipse([px - 2, py - 2, px + 2, py + 2], fill=INK)
-# trough + spike markers
-tx, ty = sp_x(0.78), sp_y(125.53)
-d.ellipse([tx - 4, ty - 4, tx + 4, ty + 4], fill=RED)
-sx, sy = sp_x(1.00), sp_y(165.05)
-d.ellipse([sx - 4, sy - 4, sx + 4, sy + 4], fill=GREEN)
-d.text((MX + 12, SY + 11), "NVDA", font=f_bebas(18), fill=GREY)
-d.text((MX + 52, SY + 13), "\u2014 2 WEEKS", font=f_sans(13), fill=GREY)
-d.text((tx - 70, SY + 2), "\u221233%", font=f_sansb(13), fill=RED)
-d.text((sx - 90, SY + 2), "+31% MON", font=f_sansb(13), fill=GREEN)
-y = SY + SH + 8
-d.line([MX, y, MX + CW, y], fill=LINE, width=1)
-y += 8                       # grid top
+def draw_kicker(draw):
+    f = font(SANS_BOLD, 18)
+    draw.text((W // 2, 118),
+              "NINE STORIES THAT DEFINED THE DAY \u2022 MARKETS \u2022 WAR "
+              "\u2022 INDONESIA \u2022 JUSTICE",
+              font=f, fill=GREY, anchor="ma")
 
-# ---- grid 2x2, cards 462x148 ----
-GY, CHH, VGAP = y, 148, 12
-for i, (tag, color, head, body) in enumerate(CARDS):
-    cx = MX + (i % 2) * (462 + 28)
-    cy = GY + (i // 2) * (CHH + VGAP)
-    d.rectangle([cx, cy, cx + 462, cy + CHH], fill=CARD, outline=LINE, width=1)
-    d.rectangle([cx, cy, cx + 462, cy + 4], fill=color)
-    d.text((cx + 14, cy + 12), tag, font=f_bebas(24), fill=color)
-    hl = wrap(d, head, f_sansb(23), 462 - 28)
-    assert len(hl) <= 2, f"card {i} headline {len(hl)} lines: {hl}"
-    for j, ln in enumerate(hl):
-        d.text((cx + 14, cy + 42 + j * 26), ln, font=f_sansb(23), fill=INK)
-    bl = wrap(d, body, f_sans(18), 462 - 28)
-    assert len(bl) == 2, f"card {i} body {len(bl)} lines: {bl}"
-    for j, ln in enumerate(bl):
-        d.text((cx + 14, cy + 98 + j * 22), ln, font=f_sans(18), fill=INK)
-y = GY + 2 * CHH + VGAP + 8
-d.line([MX, y, MX + CW, y], fill=LINE, width=1)
-y += 8                       # strip top
 
-# ---- BY THE NUMBERS strip (952x62) ----
-SY2, SH2 = y, 62
-d.rectangle([MX, SY2, MX + CW, SY2 + SH2], fill=CARD, outline=LINE, width=1)
-d.rectangle([MX, SY2, MX + CW, SY2 + 3], fill=RED)
-colw = CW / 4
-for i, (num, color, l1, l2) in enumerate(STRIP):
-    cx0 = MX + i * colw
-    if i:
-        d.line([cx0, SY2 + 10, cx0, SY2 + SH2 - 10], fill=LINE, width=1)
-    d.text((cx0 + 16, SY2 + 6), num, font=f_anton(28), fill=color)
-    d.text((cx0 + 16, SY2 + 36), l1, font=f_sansb(13), fill=INK)
-    d.text((cx0 + 16, SY2 + 49), l2, font=f_sansb(13), fill=INK)
-y = SY2 + SH2 + 8
+def hero_photo():
+    """Crop the portrait hero photo to the wide hero band, with a scrim."""
+    im = Image.open(HERE / "hero-20261124.png").convert("RGB")
+    sw, sh = im.size
+    target_w, target_h = 616, 200
+    crop_h = int(sw * target_h / target_w)
+    y0 = 115  # band centred on the face: hair top ~130, chin ~280
+    y0 = max(0, min(y0, sh - crop_h))
+    im = im.crop((0, y0, sw, y0 + crop_h)).resize(
+        (target_w, target_h), Image.LANCZOS)
+    # dark scrim over the bottom third so the white headline reads
+    overlay = Image.new("RGBA", im.size, (0, 0, 0, 0))
+    od = ImageDraw.Draw(overlay)
+    scrim_top = int(target_h * 0.42)
+    for yy in range(scrim_top, target_h):
+        alpha = int(200 * (yy - scrim_top) / (target_h - scrim_top))
+        od.line([(0, yy), (target_w, yy)], fill=(0, 0, 0, alpha))
+    return Image.alpha_composite(im.convert("RGBA"), overlay).convert("RGB")
 
-# ---- ALSO TODAY ----
-d.text((MX, y), "ALSO TODAY", font=f_anton(24), fill=INK)
-y += 25
-for tag, txt in ALSO:
-    full = f"{tag} \u2014 {txt}"
-    w = d.textlength(full, font=f_sans(18))
-    assert w <= CW, f"ALSO TODAY wraps ({w:.0f}px): {full}"
-    d.text((MX, y), tag, font=f_sansb(18), fill=RED)
-    tw = d.textlength(tag, font=f_sansb(18))
-    d.text((MX + tw, y), f" \u2014 {txt}", font=f_sans(18), fill=INK)
-    y += 20
-items_end = y
-print(f"[diag] ALSO TODAY ends y={items_end}")
 
-# ---- footer ----
-FY = H - 26
-d.line([MX, FY - 10, MX + CW, FY - 10], fill=LINE, width=1)
-fw = d.textlength(FOOTER, font=f_sans(14))
-assert fw <= CW, f"footer wraps ({fw:.0f}px)"
-draw_center(d, FY, FOOTER, f_sans(14), GREY)
-print(f"[diag] footer line y={FY-10}, gap from ALSO TODAY = {FY-10-items_end}px, footer w={fw:.0f}px")
+def draw_hero(draw, img):
+    photo = hero_photo()
+    img.paste(photo, (24, 152))
+    head = font(ANTON, 60)
+    draw.text((36, 272), "HUANG IS BACK", font=head, fill=(255, 255, 255))
 
-img.save("entry-20261124.png")
-print("saved entry-20261124.png")
+    # WHAT HAPPENS NEXT box
+    draw.rectangle([652, 152, 1000, 352], fill=BLACK)
+    title = font(ANTON, 28)
+    draw.text((668, 162), "WHAT HAPPENS", font=title, fill=GOLD)
+    draw.text((668, 194), "NEXT", font=title, fill=GOLD)
+    bullets = [
+        "Board reversed itself \u2014 judgment under scrutiny",
+        "Rally must hold after leadership vacuum",
+        "NVDA nears $4T cap",
+    ]
+    bf = font(SANS, 16)
+    y = 236
+    for b in bullets:
+        lines = wrap_text(draw, b, bf, 312)
+        for i, line in enumerate(lines):
+            prefix = "\u2022  " if i == 0 else "     "
+            draw.text((668, y), prefix + line, font=bf,
+                      fill=(255, 255, 255))
+            y += 21
+        y += 4
+
+    # hero body, two lines
+    body = font(SANS, 20)
+    text = ("Nvidia's board unanimously reinstates Jensen Huang as CEO \u2014 "
+            "11 days after he resigned, and 6 days after saying it would "
+            "not. NVDA soars 31%, its best day since 2003, adding $952B "
+            "in value.")
+    lines = wrap_text(draw, text, body, 976)
+    draw_lines(draw, 24, 364, lines[:2], body, INK, 26)
+
+
+def draw_sparkline(draw):
+    draw.rectangle([24, 426, 1000, 428], fill=RED)
+    draw.rectangle([24, 428, 1000, 486], fill=CARD, outline=LIGHT_GREY)
+    lab = font(SANS_BOLD, 15)
+    draw.text((36, 446), "NVDA", font=lab, fill=INK)
+    sub = font(SANS, 13)
+    draw.text((92, 448), "\u2014 2 WEEKS", font=sub, fill=GREY)
+
+    # two-week path: slow slide, then the +31% jump on Monday
+    pts = [(180, 450), (280, 454), (380, 458), (480, 462), (560, 466),
+           (640, 470), (720, 474), (790, 478), (860, 462), (975, 442)]
+    draw.line(pts, fill=INK, width=2)
+    for (x, y) in pts:
+        draw.ellipse([x - 3, y - 3, x + 3, y + 3], fill=INK)
+    draw.ellipse([975 - 4, 442 - 4, 975 + 4, 442 + 4], fill=GREEN)
+    neg = font(SANS_BOLD, 15)
+    draw.text((742, 434), "\u221233%", font=neg, fill=RED)
+    pos = font(SANS_BOLD, 15)
+    draw.text((820, 432), "+31% MON", font=pos, fill=GREEN)
+
+
+def draw_card(draw, x, y, w, h, accent, tag, headline, body_text):
+    draw.rectangle([x, y, x + w, y + h], fill=CARD, outline=LIGHT_GREY)
+    draw.rectangle([x, y, x + w, y + 4], fill=accent)
+    tf = font(BEBAS, 21)
+    draw.text((x + 16, y + 12), tag, font=tf, fill=accent)
+    hf = font(SANS_BOLD, 25)
+    lines = wrap_text(draw, headline, hf, w - 32)
+    draw_lines(draw, x + 16, y + 38, lines[:2], hf, INK, 29)
+    bf = font(SANS, 17)
+    blines = wrap_text(draw, body_text, bf, w - 32)
+    draw_lines(draw, x + 16, y + 100, blines[:2], bf, BODY_GREY, 21)
+
+
+def draw_cards(draw):
+    cw, ch = 486, 158
+    draw_card(draw, 24, 500, cw, ch, RED, "WAR",
+              "UKRAINE SINKS RUSSIAN WARSHIP OFF LIBYA",
+              "Seven sea drones sank Merkury off Benghazi \u2014 the ~40th "
+              "warship lost since 2022.")
+    draw_card(draw, 514, 500, cw, ch, RED, "INDONESIA",
+              "26 BODY BAGS AFTER CANDY-FACTORY FIRE",
+              "Cikande blaze killed at least 26; 28 missing, DNA tests "
+              "under way. Police probe negligence.")
+    draw_card(draw, 24, 666, cw, ch, BLUE, "POLITICS",
+              "PRABOWO NAMES TWO FOR VICE PRESIDENT",
+              "Amran Sulaiman, Sugiono to replace Gibran; MPR's 732 vote "
+              "11 Dec, serves to 2029.")
+    draw_card(draw, 514, 666, cw, ch, PURPLE, "WORLD",
+              "14 NATIONS BACK GENOCIDE RULING ON MYANMAR",
+              "The ICJ's first genocide verdict in 80 years is binding. "
+              "Britain sanctioned 5 generals.")
+
+
+def draw_numbers(draw):
+    y0, h = 836, 62
+    draw.rectangle([24, y0, 1000, y0 + h], fill=CARD, outline=LIGHT_GREY)
+    draw.rectangle([24, y0, 1000, y0 + 3], fill=RED)
+    cols = [
+        ("+6.51%", GREEN, "NASDAQ'S BEST DAY", "SINCE APRIL 2025"),
+        ("167,113", INK, "CPNS 2026", "FORMATIONS"),
+        ("61M", RED, "TONS OF RUBBLE", "IN GAZA"),
+        ("$2,500", INK, "FINE PER GROK", "VIOLATION"),
+    ]
+    col_w = 244
+    nf = font(ANTON, 24)
+    lf = font(SANS_BOLD, 12)
+    for i, (num, color, l1, l2) in enumerate(cols):
+        x = 24 + i * col_w
+        if i:
+            draw.line([(x, y0 + 10), (x, y0 + h - 10)], fill=LIGHT_GREY)
+        draw.text((x + 16, y0 + 6), num, font=nf, fill=color)
+        draw.text((x + 16, y0 + 34), l1, font=lf, fill=GREY)
+        draw.text((x + 16, y0 + 48), l2, font=lf, fill=GREY)
+
+
+def draw_also_today(draw):
+    hf = font(ANTON, 23)
+    draw.text((24, 902), "ALSO TODAY", font=hf, fill=INK)
+    items = [
+        ("MARKETS", "MSCI firm on Indonesia review; rupiah Rp18,227 "
+         "(\u22120.15%), IHSG +0.49% to 5,241.59."),
+        ("TECH", "Virginia & Oregon sue SpaceX over Grok's >20,000 images "
+         "of children \u2192 first state suits."),
+        ("GAZA", "Oxfam: >99% of Gaza contaminated by war debris \u2192 "
+         "water ~18 litres per person a day."),
+        ("VENEZUELA", "US designates Cartel de los Soles a terrorist "
+         "group \u2192 freezes; Maduro denies it exists."),
+    ]
+    y = 928
+    for label, text in items:
+        lf = font(SANS_BOLD, 16)
+        lw = draw.textlength(label + " \u2014 ", font=lf)
+        full = label + " \u2014 " + text
+        bf = fit_one_line(draw, full, SANS, 16, 976)
+        draw.text((24, y), label + " \u2014 ", font=lf, fill=RED)
+        draw.text((24 + lw, y), text, font=bf, fill=BODY_GREY)
+        y += 19
+
+
+def draw_footer(draw):
+    f = font(SANS, 12)
+    draw.text((W // 2, 1008),
+              "As of 19:45 WIB \u2022 What to watch: Nvidia rally holds? "
+              "\u2022 Sources: Reuters \u2022 AP \u2022 Bloomberg \u2022 "
+              "Photo: Eidesvik / Wikimedia CC BY-SA",
+              font=f, fill=GREY, anchor="ma")
+
+
+def main():
+    out = Path(sys.argv[1]) if len(sys.argv) > 1 else HERE / "entry-20261124.png"
+    img = Image.new("RGB", (W, H), CREAM)
+    draw = ImageDraw.Draw(img)
+    draw_masthead(draw)
+    draw_kicker(draw)
+    draw_hero(draw, img)
+    draw_sparkline(draw)
+    draw_cards(draw)
+    draw_numbers(draw)
+    draw_also_today(draw)
+    draw_footer(draw)
+    img.save(out)
+    print(f"wrote {out} ({out.stat().st_size} bytes)")
+
+
+if __name__ == "__main__":
+    main()

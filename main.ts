@@ -1,15 +1,18 @@
-// Entry for make.fun bounty news-image-20261124: "Sum up 24 November's world
-// news in one image". The program copies the infographic this repository holds
-// (entry-20261124.png, 1024x1024, built with build_image_20261124.py) to
-// /output/entry.png — the one image the bounty asks the program to write.
-// Deterministic: the same input bytes are copied on every run.
-// Node 22 stdlib only.
+// Entry harness for the news-image-20261124 entry.
+//
+// Copies the pre-built entry image (entry-20261124.png, rendered by
+// build_image_20261124.py) to the harness output directory as entry.png.
+// Node 22 standard library only; no dependencies, no network.
+
 import { copyFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const src = join(here, "entry-20261124.png");
-const outDir = "/output";
+const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
+
 mkdirSync(outDir, { recursive: true });
-copyFileSync(src, join(outDir, "entry.png"));
+const src = join(here, "entry-20261124.png");
+const dst = join(outDir, "entry.png");
+copyFileSync(src, dst);
+console.log(`entry.png written to ${outDir}`);
